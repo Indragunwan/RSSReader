@@ -6,6 +6,11 @@ from datetime import datetime
 import time
 from typing import List, Dict, Optional
 
+# Use a standard browser User-Agent to avoid being blocked by some sites
+DEFAULT_HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+}
+
 def parse_date(date_struct):
     if not date_struct:
         return datetime.utcnow()
@@ -16,11 +21,18 @@ def parse_date(date_struct):
 
 def fetch_feed_data(url: str):
     """Fetch and parse an RSS/Atom feed."""
-    feed = feedparser.parse(url)
-    if feed.bozo:
-        # Some bozo errors are minor, but if there's no entries, it's likely invalid
-        if not feed.entries:
-            return None
+    try:
+        response = requests.get(url, headers=DEFAULT_HEADERS, timeout=15)
+        response.raise_for_status()
+        # Parse from the fetched content to handle encoding correctly and use our User-Agent
+        feed = feedparser.parse(response.content)
+    except Exception as e:
+        print(f"Error fetching feed {url}: {e}")
+        # Fallback to direct feedparser if requests fails (might be a weird local URL or something)
+        feed = feedparser.parse(url)
+
+    if feed.bozo and not feed.entries:
+        return None
             
     title = feed.feed.get('title', 'Unknown Feed')
     site_url = feed.feed.get('link', url)
@@ -52,11 +64,11 @@ def discover_feeds(url: str) -> List[Dict]:
     """Discover RSS/Atom feeds from a website URL."""
     feeds = []
     try:
-        response = requests.get(url, timeout=10)
+        response = requests.get(url, headers=DEFAULT_HEADERS, timeout=10)
         response.raise_for_status()
         
         # 1. Check if the URL itself is a feed
-        feed = feedparser.parse(url)
+        feed = feedparser.parse(response.content)
         if not feed.bozo and feed.entries:
             return [{
                 "title": feed.feed.get('title', url),
@@ -93,9 +105,9 @@ def discover_feeds(url: str) -> List[Dict]:
             for path in common_paths:
                 test_url = urljoin(url, path)
                 try:
-                    test_resp = requests.get(test_url, timeout=5)
+                    test_resp = requests.get(test_url, headers=DEFAULT_HEADERS, timeout=5)
                     if test_resp.status_code == 200:
-                        feed = feedparser.parse(test_url)
+                        feed = feedparser.parse(test_resp.content)
                         if not feed.bozo and feed.entries:
                             feeds.append({
                                 "title": feed.feed.get('title', test_url),
