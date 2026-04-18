@@ -157,7 +157,14 @@ def refresh_all_feeds(db: Session):
                     total_added += 1
             db.commit()
         except Exception as e:
-            print(f"Error refreshing feed {feed.url}: {e}")
+            db.rollback()
+            try:
+                print(f"Error refreshing feed {feed.url}: {e}")
+            except Exception:
+                pass
             feed.error_count += 1
-            db.commit()
+            try:
+                db.commit()
+            except Exception:
+                db.rollback()
     return total_added
